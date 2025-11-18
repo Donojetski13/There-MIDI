@@ -149,7 +149,10 @@ int main(void)
 	status_P = sensorInit(&Dev_pitch, 1, &isAlive_P);
 	status_V = sensorInit(&Dev_vol, 2, &isAlive_V);
 	printf("MIDI Board initialization\n");
-	if(midi_Init()) printf("MIDI Board failed\n");
+	if(midi_Init()) {
+		printf("MIDI Board failed\n");
+		return 13;
+	}
   	if(status_P)
   	{
   		printf("Pitch VL53L7CX ULD Loading failed (pitch)\n");
@@ -238,11 +241,11 @@ int main(void)
 //	 printf("Zone %d Pitch: level %u\t\t|\t\t", testZone,Tof_values_1[testZone]);
 //	 printf("Zone %d Volume: level %u\r\n", testZone, Tof_values_2[testZone]);
 	 // spot to add playing notes //
-	 vol = 127 - vol_scale*Tof_values_2[vol_zone]; // Close = load & far = quiet
-	 note = root + 	Tof_values_1[Pitch_zone];		// note  from the base note
+	 vol = 127 - vol_scale*Tof_values_1[vol_zone]; // Close = load & far = quiet
+	 note = root + 	Tof_values_2[Pitch_zone];		// note  from the base note
 	 if (vol < 0) vol = 0;			// data validation
 	 if (note > 127) note = 127;
-	 if (Tof_values_1[fx_zone] < fx_trigger) fx = 1; // check needed value for effect
+	 if (Tof_values_2[fx_zone] < fx_trigger) fx = 1; // check needed value for effect
 	 else fx = 0;
 
 	 midi_SetChannelVolume(0, vol);
@@ -462,7 +465,7 @@ static void MX_SPI2_Init(void)
   hspi2.Instance = SPI2;
   hspi2.Init.Mode = SPI_MODE_MASTER;
   hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-  hspi2.Init.DataSize = SPI_DATASIZE_4BIT;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
@@ -500,16 +503,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2|LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1|USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -517,12 +520,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD3_Pin LD2_Pin */
-  GPIO_InitStruct.Pin = LD3_Pin|LD2_Pin;
+  /*Configure GPIO pins : PB2 LD3_Pin LD2_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|LD3_Pin|LD2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PG0 USB_OverCurrent_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|USB_OverCurrent_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PG1 USB_PowerSwitchOn_Pin */
+  GPIO_InitStruct.Pin = GPIO_PIN_1|USB_PowerSwitchOn_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
   GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
@@ -531,19 +547,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_OverCurrent_Pin */
-  GPIO_InitStruct.Pin = USB_OverCurrent_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(USB_OverCurrent_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
-  GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(USB_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : USB_SOF_Pin USB_ID_Pin USB_DM_Pin USB_DP_Pin */
   GPIO_InitStruct.Pin = USB_SOF_Pin|USB_ID_Pin|USB_DM_Pin|USB_DP_Pin;
