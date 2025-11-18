@@ -15,12 +15,12 @@ extern SPI_HandleTypeDef 			hspi2;
 #define VS1053_DREQ_PIN				GPIO_PIN_0 // last SPI status
 
 #define	VS1053_XRST_PORT			GPIOG
-#define	VS1053_XRST_PIN				GPIO_PIN_1 //PB0 reset
+#define	VS1053_XRST_PIN				GPIO_PIN_1 // PB0 reset
 
 #define VS1053_XCS_PORT				GPIOB
-#define VS1053_XCS_PIN				GPIO_PIN_10 //PB10 clock
+#define VS1053_XCS_PIN				GPIO_PIN_2 // command start
 //#define VS1053_XDCS_PORT			GPIOD
-//#define VS1053_XDCS_PIN				GPIO_PIN_3
+//#define VS1053_XDCS_PIN			GPIO_PIN_3
 
 /* Commands */
 #define VS1053_WRITE_CMD	0x02
