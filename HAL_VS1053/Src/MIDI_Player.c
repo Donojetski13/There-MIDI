@@ -1,4 +1,5 @@
 #include "MIDI_Player.h"
+#include <stdio.h>
 
 #define MIDI_ERROR ((uint8_t) 13U)
 
@@ -21,9 +22,9 @@ uint8_t midi_SetInstrument(uint8_t chan, uint8_t inst)
 	inst --; // page 32 has instruments starting with 1 not 0 :(
 	if (inst > 127) return MIDI_ERROR;
 
-	uint8_t status = VS1053_SciWrite(VS1053_WRITE_CMD, (MIDI_CHAN_PROGRAM | chan));
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD,inst);
-
+//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_CHAN_PROGRAM);
+	status |= VS1053_SdiWrite(inst);
     return status;
 }
 
@@ -32,9 +33,10 @@ uint8_t midi_SetChannelVolume(uint8_t chan, uint8_t vol)
 	if (chan > 15) return MIDI_ERROR;
 	if (vol > 127) return MIDI_ERROR;
 
-	uint8_t status = VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_CHAN_MSG | chan);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_CHAN_VOLUME);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, vol);
+	//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_CHAN_MSG);
+	status |= VS1053_SdiWrite(MIDI_CHAN_VOLUME);
+	status |= VS1053_SdiWrite(vol);
 
 	return status;
 }
@@ -44,9 +46,23 @@ uint8_t midi_SetChannelBank(uint8_t chan, uint8_t bank)
 	if (chan > 15) return MIDI_ERROR;
 	if (bank > 127) return MIDI_ERROR;
 
-	uint8_t status = VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_CHAN_MSG | chan);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_CHAN_BANK);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, bank);
+	//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_CHAN_MSG);
+	status |= VS1053_SdiWrite(MIDI_CHAN_BANK);
+	status |= VS1053_SdiWrite(bank);
+
+	return status;
+}
+
+uint8_t midi_SetChannelReverb(uint8_t chan, uint8_t fx)
+{
+	if (chan > 15) return MIDI_ERROR;
+	if (fx) fx = 127;
+
+	//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_CHAN_MSG);
+	status |= VS1053_SdiWrite(MIDI_CHAN_REVERB);
+	status |= VS1053_SdiWrite(fx);
 
 	return status;
 }
@@ -57,9 +73,10 @@ uint8_t midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel)
 	if (n > 127) return MIDI_ERROR;
 	if (vel > 127) return MIDI_ERROR;
 
-	uint8_t status = VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_NOTE_ON | chan);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, n);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, vel);
+	//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_NOTE_ON);
+	status |= VS1053_SdiWrite(n);
+	status |= VS1053_SdiWrite(vel);
 
 	return status;
 }
@@ -71,35 +88,35 @@ uint8_t midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel)
 	if (n > 127) return MIDI_ERROR;
 	if (vel > 127) return MIDI_ERROR;
 
-	uint8_t status = VS1053_SciWrite(VS1053_WRITE_CMD, MIDI_NOTE_OFF | chan);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, n);
-	status |= VS1053_SciWrite(VS1053_WRITE_CMD, vel);
+	//	uint8_t status = VS1053_SdiWrite(0);
+	uint8_t status = VS1053_SdiWrite(MIDI_NOTE_OFF);
+	status |= VS1053_SdiWrite(n);
+	status |= VS1053_SdiWrite(vel);
 
 	return status;
 }
 
 void ToFSensor_sucess()
 {
-	for (int i =0; i < 3; i++){
+	printf("Playing Init success\n");
 		for (uint8_t i=60; i<69; i++) {
 			midiNoteOn(0, i, 127);
 			HAL_Delay(100);
 			midiNoteOff(0, i, 127);
 		}
-		HAL_Delay(1000);
-	}
+	printf("Stopped Playing Init success\n");
 }
 
 void ToFSensor_failure()
 {
-	for (int i =0; i < 3; i++){
-		midiNoteOn(0, 63, 127);
+	printf("Playing Init failed\n");
+	for (uint8_t i=69; i>=60; i--) {
+		midiNoteOn(0, i, 127);
 		HAL_Delay(100);
-		midiNoteOff(0, 63, 127);
-		midiNoteOn(0, 60, 127);
-		HAL_Delay(900);
-		midiNoteOff(0, 60, 127);
-
-		HAL_Delay(1000);
+		midiNoteOff(0, i, 127);
 	}
+	midiNoteOn(0, 60, 127);
+	HAL_Delay(500);
+	midiNoteOff(0, 60, 127);
+	printf("Stopped Playing Init failed\n");
 }
