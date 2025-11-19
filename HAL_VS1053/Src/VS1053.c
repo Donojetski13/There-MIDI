@@ -3,32 +3,13 @@
 /* Pin control */
 #define XCS_HIGH	HAL_GPIO_WritePin(VS1053_XCS_PORT, VS1053_XCS_PIN, GPIO_PIN_SET)
 #define XCS_LOW		HAL_GPIO_WritePin(VS1053_XCS_PORT, VS1053_XCS_PIN, GPIO_PIN_RESET)
-//#define XDCS_HIGH	HAL_GPIO_WritePin(VS1053_XDCS_PORT, VS1053_XDCS_PIN, GPIO_PIN_SET)
-//#define XDCS_LOW	HAL_GPIO_WritePin(VS1053_XDCS_PORT, VS1053_XDCS_PIN, GPIO_PIN_RESET)
+#define XDCS_HIGH	HAL_GPIO_WritePin(VS1053_XDCS_PORT, VS1053_XDCS_PIN, GPIO_PIN_SET)
+#define XDCS_LOW	HAL_GPIO_WritePin(VS1053_XDCS_PORT, VS1053_XDCS_PIN, GPIO_PIN_RESET)
 #define XRST_HIGH	HAL_GPIO_WritePin(VS1053_XRST_PORT, VS1053_XRST_PIN, GPIO_PIN_SET)
 #define XRST_LOW	HAL_GPIO_WritePin(VS1053_XRST_PORT, VS1053_XRST_PIN, GPIO_PIN_RESET)
 
 /* endFill byte is required to stop playing */
 uint8_t endFillByte;
-
-/* Registers */
-const uint8_t VS1053_REG_BASE		= 0x00;
-const uint8_t VS1053_REG_MODE   	= 0x00;
-const uint8_t VS1053_REG_STATUS 	= 0x01;
-const uint8_t VS1053_REG_BASS 		= 0x02;
-const uint8_t VS1053_REG_CLOCKF 	= 0x03;
-const uint8_t VS1053_REG_DECODE_TIME = 0x04;
-const uint8_t VS1053_REG_AUDATA 	= 0x05;
-const uint8_t VS1053_REG_WRAM 		= 0x06;
-const uint8_t VS1053_REG_WRAMADDR 	= 0x07;
-const uint8_t VS1053_REG_HDAT0 		= 0x08;
-const uint8_t VS1053_REG_HDAT1 		= 0x09;
-const uint8_t VS1053_REG_AIADDR 	= 0x0A;
-const uint8_t VS1053_REG_VOL 		= 0x0B;
-const uint8_t VS1053_REG_AICTRL0 	= 0x0C;
-const uint8_t VS1053_REG_AICTRL1 	= 0x0D;
-const uint8_t VS1053_REG_AICTRL2 	= 0x0E;
-const uint8_t VS1053_REG_AICTRL3 	= 0x0F;
 
 /* Initialize VS1053 */
 uint8_t VS1053_Init()
@@ -36,7 +17,7 @@ uint8_t VS1053_Init()
 	uint16_t status = 0;
 
 	XCS_HIGH;		    /* XCS High */
-//	DREQ_HIGH;		    /* DREQ High */
+	XDCS_HIGH;		    /* XDCS High */
 	VS1053_Reset();     /* Hard Reset */
 
 	/* x 1.0 Clock, 12MHz / 7, SPI Baudrate should be less than 1.75MHz */
@@ -44,7 +25,6 @@ uint8_t VS1053_Init()
 	if(HAL_SPI_Init(HSPI_VS1053) != HAL_OK) return 13;
 
 	/* Read Status to check SPI */
-	if(VS1053_SciWrite(VS1053_REG_STATUS, 0x04)) return 13;
 	if(VS1053_SciRead(VS1053_REG_STATUS, &status)) return 13;
 	if(((status >> 4) & 0x0F) != 0x04) return 13;
 
@@ -62,6 +42,9 @@ uint8_t VS1053_Init()
 
 	(HSPI_VS1053)->Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  /* 42MHz / 16 = 2.625MHz */
 	if(HAL_SPI_Init(HSPI_VS1053) != HAL_OK) return 13;
+
+	/* set master volume */
+//	if(VS1053_SciWrite(VS1053_REG_VOL, 0x7F7F)) return 13;	/* 127 for left & right */
 
 	/* Read Status to check SPI */
 	if(VS1053_SciRead(VS1053_REG_STATUS, &status)) return 13;
@@ -208,16 +191,16 @@ uint8_t VS1053_SciRead( uint8_t address, uint16_t *res)
 }
 
 /* SDI Tx */
-//uint8_t VS1053_SdiWrite( uint8_t input )
-//{
-//	while (HAL_GPIO_ReadPin(VS1053_DREQ_PORT, VS1053_DREQ_PIN) == GPIO_PIN_RESET);	/* Wait DREQ High */
-//
-//	XDCS_LOW;			/* XDCS Low(SDI) */
-//	if(HAL_SPI_Transmit(HSPI_VS1053, &input, 1, 10) != HAL_OK) return 13;		/* SPI Tx 1 byte */
-//	XDCS_HIGH;			/* XDCS High(SDI) */
-//
-//	return 0;
-//}
+uint8_t VS1053_SdiWrite( uint8_t input )
+{
+	while (HAL_GPIO_ReadPin(VS1053_DREQ_PORT, VS1053_DREQ_PIN) == GPIO_PIN_RESET);	/* Wait DREQ High */
+
+	XDCS_LOW;			/* XDCS Low(SDI) */
+	if(HAL_SPI_Transmit(HSPI_VS1053, &input, 1, 10) != HAL_OK) return 13;		/* SPI Tx 1 byte */
+	XDCS_HIGH;			/* XDCS High(SDI) */
+
+	return 0;
+}
 
 ///* SDI Tx 32 bytes */
 //uint8_t VS1053_SdiWrite32( uint8_t *input32 )
