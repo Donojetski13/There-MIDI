@@ -42,6 +42,7 @@
 #define _8x8 ((uint8_t) 64U)
 #define continus 1U
 #define Auto 3U
+#define fx_trigger 20
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -83,7 +84,7 @@ static void MX_SPI2_Init(void);
 //	 printf("Zone %d distance: %d mm", 0, valConcat(Tof_values_1,0));
 // }
 
- int8_t sensorInit(VL53L7CX_Configuration* Dev, int port, uint8_t* isAlive) {
+ uint8_t sensorInit(VL53L7CX_Configuration* Dev, int port, uint8_t* isAlive) {
 	 printf("VL53L7CX sensor %d Initialization start\n", port);
 	 Dev->platform.address = ToF_W;
 	 if (port == 1) Dev->platform.i2c = hi2c1;
@@ -106,6 +107,17 @@ static void MX_SPI2_Init(void);
 
 	return status;
  }
+
+ uint8_t rightZonesCheck(uint16_t* Values) {
+	 for (int i =58; i<62; i++){
+		 if (Tof_values_2[i] < fx_trigger) return 0;
+	 }
+	 for (int i =50; i<54; i++){
+		 if (Tof_values_2[i] < fx_trigger) return 0;
+	 }
+
+	 return 1;
+ }
 /* USER CODE END 0 */
 
 /**
@@ -116,9 +128,9 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	uint8_t status_P, isAlive_P, status_V, isAlive_V;
-	VL53L7CX_Configuration Dev_pitch, Dev_vol; /* Sensor configuration */
-	VL53L7CX_ResultsData 	Results_P, Results_V;  // Sensor read out info
+	uint8_t status_1, isAlive_1, status_2, isAlive_2;			// 1 = volume  | 2 = pitch
+	VL53L7CX_Configuration Dev_1, Dev_2; /* Sensor configuration */
+	VL53L7CX_ResultsData 	Results_1, Results_2;  // Sensor read out info
 
   /* USER CODE END 1 */
 
@@ -146,114 +158,112 @@ int main(void)
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
   	/* Init VL53L7CX sensor */
-	status_P = sensorInit(&Dev_pitch, 1, &isAlive_P);
-	status_V = sensorInit(&Dev_vol, 2, &isAlive_V);
+	status_1 = sensorInit(&Dev_1, 1, &isAlive_1);
+	status_2 = sensorInit(&Dev_2, 2, &isAlive_2);
 	printf("MIDI Board initialization\n");
 	if(midi_Init()) {
 		printf("MIDI Board failed\n");
 		return 13;
 	}
-  	if(status_P)
+  	if(status_1)
   	{
-  		printf("Pitch VL53L7CX ULD Loading failed (pitch)\n");
+  		printf("Volume VL53L7CX ULD Loading failed (Volume)\n");
   		ToFSensor_failure();
-  		return status_P;
+  		return status_1;
   	}
-  	if(status_V)
+  	if(status_2)
 	{
-		printf("Volume VL53L7CX ULD Loading failed (pitch)\n");
+		printf("Pitch VL53L7CX ULD Loading failed (pitch)\n");
 		ToFSensor_failure();
-		return status_V;
+		return status_2;
 	}
   	printf("VL53L7CX ULD ready ! (Version : %s)\n",VL53L7CX_API_REVISION);
   	ToFSensor_sucess();
-//  	vl53l7cx_get_resolution(&Dev_pitch, &resolution);
-//  	vl53l7cx_get_resolution(&Dev_vol, &resolution);
+//  	vl53l7cx_get_resolution(&Dev_1, &resolution);
+//  	vl53l7cx_get_resolution(&Dev_2, &resolution);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t root = 63, vol_scale = 6, note, vol, fx;
-  int Pitch_zone = 28, vol_zone = 28, fx_zone = 60, fx_trigger = 20;
+  uint8_t root = 63, vol_scale = 6, note = 0, vol = 0, fx;
+  int Pitch_zone = 28, vol_zone = 28, fx_zone = 60;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  uint8_t data_ready_P = 0, data_ready_V = 0;
+	  uint8_t data_ready_1 = 0, data_ready_2 = 0;
 
-	  status_P = vl53l7cx_check_data_ready(&Dev_pitch, &data_ready_P);
-	  status_V = vl53l7cx_check_data_ready(&Dev_vol, &data_ready_V);
-	  if (status_P) {
-		  printf("Pitch: check_data_ready error: %u\r\n", status_P);
+	  status_1 = vl53l7cx_check_data_ready(&Dev_1, &data_ready_1);
+	  status_2 = vl53l7cx_check_data_ready(&Dev_2, &data_ready_2);
+	  if (status_1) {
+		  printf("Volume: check_data_ready error: %u\r\n", status_1);
 		  HAL_Delay(5);
 		  continue;
 	  }
-	  if (status_V) {
-		  printf("Volume: check_data_ready error: %u\r\n", status_V);
+	  if (status_2) {
+		  printf("Pitch: check_data_ready error: %u\r\n", status_2);
 		  HAL_Delay(5);
 		  continue;
 	  }
 
-	  if (!data_ready_P) {
+	  if (!data_ready_1) {
 		  HAL_Delay(1);      // small backoff; frame rate set by sensor
 		  continue;
 	  }
-	  if (!data_ready_V) {
+	  if (!data_ready_2) {
 		  HAL_Delay(1);      // small backoff; frame rate set by sensor
 		  continue;
 	  }
 
 	  // 2) Read the fresh frame
-	  data_ready_P = vl53l7cx_get_ranging_data(&Dev_pitch, &Results_P);
-	  data_ready_V = vl53l7cx_get_ranging_data(&Dev_vol, &Results_V);
-	 if (data_ready_P) {
-		 printf("Pitch: get_ranging_data error: %u\r\n", data_ready_P);
+	  data_ready_1 = vl53l7cx_get_ranging_data(&Dev_1, &Results_1);
+	  data_ready_2 = vl53l7cx_get_ranging_data(&Dev_2, &Results_2);
+	 if (data_ready_1) {
+		 printf("Volume: get_ranging_data error: %u\r\n", data_ready_1);
 		 HAL_Delay(5);
 		 continue;
 	 }
-	 if (data_ready_V) {
-		 printf("Volume: get_ranging_data error: %u\r\n", data_ready_V);
+	 if (data_ready_2) {
+		 printf("Pitch: get_ranging_data error: %u\r\n", data_ready_2);
 		 HAL_Delay(5);
 		 continue;
 	 }
 
 	 // 3) Optionally: confirm resolution hasn't changed
 	 // (call once outside loop in practice)
-	 //vl53l7cx_get_resolution(&Dev_pitch, &resolution);
+	 //vl53l7cx_get_resolution(&Dev_1, &resolution);
 
 	 // 4) Copy/pack only VALID distances (status 5) for display
 	 //    (nb_target_detected[zone] > 0 means we have at least one target)
 	 for (int zone = 0; zone < resolution; zone++) {
-//		 uint8_t nb_P = Results_P.nb_target_detected[zone], nb_V = Results_V.nb_target_detected[zone];
-//		 uint8_t st_P = Results_P.target_status[zone], st_V = Results_V.target_status[zone];
-		 uint16_t cm_P = 0, cm_V = 0;
+//		 uint8_t nb_P = Results_1.nb_target_detected[zone], nb_V = Results_2.nb_target_detected[zone];
+//		 uint8_t st_P = Results_1.target_status[zone], st_V = Results_2.target_status[zone];
+		 uint16_t cm_1 = 0, cm_2 = 0;
 
-		cm_P = (uint16_t)Results_P.distance_mm[zone]/10;
-		cm_V = (uint16_t)Results_V.distance_mm[zone]/10;
+		cm_1 = (uint16_t)Results_1.distance_mm[zone]/10;
+		cm_2 = (uint16_t)Results_2.distance_mm[zone]/10;
 
-		 Tof_values_1[zone] = cm_P/3; // 3 cm levels
-		 Tof_values_2[zone] = cm_V/3;
+		 Tof_values_1[zone] = cm_1/3; // 3 cm levels
+		 Tof_values_2[zone] = cm_2/3;
 	 }
-	 // 5) Example print: Zone 0, and maybe a quick 8x8 mini-grid
-//	 printf("Zone 0 distance Pitch: %u cm  (status=%u, nb=%u)   |    Zone 0 distance Volume: %u cm  (status=%u, nb=%u)\r\n",valConcat(Tof_values_1, 0),Results_P.target_status[0],Results_P.nb_target_detected[0], valConcat(Tof_values_2, 0),Results_V.target_status[0],Results_V.nb_target_detected[0]);
-//	 int testZone = 16;
-//	 printf("Zone %d Pitch: level %u\t\t|\t\t", testZone,Tof_values_1[testZone]);
-//	 printf("Zone %d Volume: level %u\r\n", testZone, Tof_values_2[testZone]);
-	 // spot to add playing notes //
+	 	 // spot to add playing notes //
+	 midiNoteOff(0, note, 127);
 	 vol = 127 - vol_scale*Tof_values_1[vol_zone]; // Close = load & far = quiet
 	 note = root + 	Tof_values_2[Pitch_zone];		// note  from the base note
-	 if (vol < 0) vol = 0;			// data validation
+	 if (vol < 0 || vol > 127) vol = 0;			// data validation
 	 if (note > 127) note = 127;
-	 if (Tof_values_2[fx_zone] < fx_trigger) fx = 1; // check needed value for effect
-	 else fx = 0;
+	 fx = rightZonesCheck(Tof_values_2); // check needed value for effect
+	 // 5) Example print:
+	 printf("Zone %d Volume: %02u\t|\t", vol_zone, vol);
+	 printf("Zone %d Note: %02u\t|\t", Pitch_zone, note);
+	 printf("Zone %d value: %u -> Reverb on: %u\r\n", fx_zone, Tof_values_2[fx_zone], fx);
 
 	 midi_SetChannelVolume(0, vol);
+	 midi_SetChannelReverb(0, fx);
 	 midiNoteOn(0, note, 127);
 	 HAL_Delay(100);
-	 midiNoteOff(0, note, 127);
 
-//	 HAL_Delay(50);
   }
   /* USER CODE END 3 */
 }
@@ -499,6 +509,7 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOE_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
@@ -509,10 +520,20 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2|LD3_Pin|LD2_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOG, GPIO_PIN_1|USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PE2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
