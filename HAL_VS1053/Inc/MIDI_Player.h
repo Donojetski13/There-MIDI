@@ -21,6 +21,7 @@
 #define MIDI_CHAN_MSG 0xB0
 #define MIDI_CHAN_BANK 0x00
 #define MIDI_CHAN_VOLUME 0x07
+#define MIDI_CHAN_REVERB 0x5b
 #define MIDI_CHAN_PROGRAM 0xC0
 
 /* Functions */
@@ -28,6 +29,7 @@ uint8_t midi_Init();
 uint8_t midi_SetInstrument(uint8_t chan, uint8_t inst);
 uint8_t midi_SetChannelVolume(uint8_t chan, uint8_t vol);
 uint8_t midi_SetChannelBank(uint8_t chan, uint8_t bank);
+uint8_t midi_SetChannelReverb(uint8_t chan, uint8_t bank);
 uint8_t midiNoteOn(uint8_t chan, uint8_t n, uint8_t vel);
 uint8_t midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel);
 void ToFSensor_sucess();
