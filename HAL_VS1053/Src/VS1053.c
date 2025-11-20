@@ -43,9 +43,6 @@ uint8_t VS1053_Init()
 	(HSPI_VS1053)->Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;  /* 42MHz / 16 = 2.625MHz */
 	if(HAL_SPI_Init(HSPI_VS1053) != HAL_OK) return 13;
 
-	/* set master volume */
-//	if(VS1053_SciWrite(VS1053_REG_VOL, 0x7F7F)) return 13;	/* 127 for left & right */
-
 	/* Read Status to check SPI */
 	if(VS1053_SciRead(VS1053_REG_STATUS, &status)) return 13;
 	if(((status >> 4) & 0x0F) != 0x04) return 13;
