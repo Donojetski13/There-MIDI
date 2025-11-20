@@ -43,6 +43,10 @@
 #define continus 1U
 #define Auto 3U
 #define fx_trigger 20
+#define CENTER_ZONE_1 27
+#define CENTER_ZONE_2 28
+#define CENTER_ZONE_3 35
+#define CENTER_ZONE_4 36
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -110,13 +114,10 @@ static void MX_SPI2_Init(void);
 
  uint8_t rightZonesCheck(uint16_t* Values) {
 	 for (int i =58; i<62; i++){
-		 if (Tof_values_2[i] < fx_trigger) return 0;
-	 }
-	 for (int i =50; i<54; i++){
-		 if (Tof_values_2[i] < fx_trigger) return 0;
+		 if (Tof_values_2[i] < fx_trigger) return 1;
 	 }
 
-	 return 1;
+	 return 0;
  }
 /* USER CODE END 0 */
 
@@ -179,14 +180,12 @@ int main(void)
 	}
   	printf("VL53L7CX ULD ready ! (Version : %s)\n",VL53L7CX_API_REVISION);
   	ToFSensor_sucess();
-//  	vl53l7cx_get_resolution(&Dev_1, &resolution);
-//  	vl53l7cx_get_resolution(&Dev_2, &resolution);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint8_t root = 63, vol_scale = 6, note = 0, vol = 0, fx;
-  int Pitch_zone = 28, vol_zone = 28, fx_zone = 60;
+  int fx_zone = 60;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -196,16 +195,6 @@ int main(void)
 
 	  status_1 = vl53l7cx_check_data_ready(&Dev_1, &data_ready_1);
 	  status_2 = vl53l7cx_check_data_ready(&Dev_2, &data_ready_2);
-	  if (status_1) {
-		  printf("Volume: check_data_ready error: %u\r\n", status_1);
-		  HAL_Delay(5);
-		  continue;
-	  }
-	  if (status_2) {
-		  printf("Pitch: check_data_ready error: %u\r\n", status_2);
-		  HAL_Delay(5);
-		  continue;
-	  }
 
 	  if (!data_ready_1) {
 		  HAL_Delay(1);      // small backoff; frame rate set by sensor
@@ -248,21 +237,23 @@ int main(void)
 		 Tof_values_2[zone] = cm_2/3;
 	 }
 	 	 // spot to add playing notes //
-	 midiNoteOff(0, note, 127);
-	 vol = 127 - vol_scale*Tof_values_1[vol_zone]; // Close = load & far = quiet
-	 note = root + 	Tof_values_2[Pitch_zone];		// note  from the base note
+	 vol = 127 - vol_scale*(Tof_values_1[CENTER_ZONE_1] + Tof_values_1[CENTER_ZONE_2] + Tof_values_1[CENTER_ZONE_3] + Tof_values_1[CENTER_ZONE_1])/4; // Close = load & far = quiet
+	 note = (Tof_values_2[CENTER_ZONE_1] + Tof_values_2[CENTER_ZONE_2] + Tof_values_2[CENTER_ZONE_3] + Tof_values_2[CENTER_ZONE_1])/4;
+	 if (note > 12) note = 12;
+	 note += root;		// note  from the base note
 	 if (vol < 0 || vol > 127) vol = 0;			// data validation
 	 if (note > 127) note = 127;
 	 fx = rightZonesCheck(Tof_values_2); // check needed value for effect
 	 // 5) Example print:
-	 printf("Zone %d Volume: %02u\t|\t", vol_zone, vol);
-	 printf("Zone %d Note: %02u\t|\t", Pitch_zone, note);
-	 printf("Zone %d value: %u -> Reverb on: %u\r\n", fx_zone, Tof_values_2[fx_zone], fx);
+	 printf("Volume: %02u\t|\t", vol);
+	 printf("Note: %02u\t|\t", note);
+	 printf("Zone %d value: %u -> Reverb: %u\r\n", fx_zone, Tof_values_2[fx_zone], fx);
 
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOn(0, note, 127);
-	 HAL_Delay(100);
+	 HAL_Delay(50);
+	 midiNoteOff(0, note, 127);
 
   }
   /* USER CODE END 3 */
