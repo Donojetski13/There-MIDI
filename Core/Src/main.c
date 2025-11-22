@@ -42,11 +42,16 @@
 #define _8x8 ((uint8_t) 64U)
 #define continus 1U
 #define Auto 3U
-#define fx_trigger 20
+#define RIGHT_CENTER_1 19
+#define RIGHT_CENTER_2 20
 #define CENTER_ZONE_1 27
 #define CENTER_ZONE_2 28
 #define CENTER_ZONE_3 35
 #define CENTER_ZONE_4 36
+#define LEFT_CENTER_1 43
+#define LEFT_CENTER_2 44
+
+#define OCTAVE 12U
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -65,8 +70,8 @@ SPI_HandleTypeDef hspi2;
 /* USER CODE BEGIN PV */
 //extern uint8_t UserRxBufferFS[256];
 
-uint8_t resolution=_8x8, ranging_frequency=10, sharpener_percent=0;
-uint16_t integration_time=20;
+uint8_t resolution=_8x8, ranging_frequency=12, sharpener_percent=14;
+uint16_t integration_time=27;
 uint8_t data_to_transfer=0;
 uint16_t Tof_values_1[64], Tof_values_2[64]; // 64(8x8) max size
 /* USER CODE END PV */
@@ -89,7 +94,7 @@ static void MX_SPI2_Init(void);
 // }
 
  uint8_t sensorInit(VL53L7CX_Configuration* Dev, int port, uint8_t* isAlive) {
-	 printf("VL53L7CX sensor %d Initialization start\n", port);
+	 printf("VL53L7CX sensor %d Initialization start\r\n", port);
 	 Dev->platform.address = ToF_W;
 	 if (port == 1) Dev->platform.i2c = hi2c1;
 	 else if (port == 2) Dev->platform.i2c = hi2c2;
@@ -97,7 +102,7 @@ static void MX_SPI2_Init(void);
 	 uint8_t status = vl53l7cx_is_alive(Dev, isAlive);
 	   	if(!(*isAlive) || status)
 	   	{
-	   		printf("VL53L7CX sensor %d not detected at requested address\n", port);
+	   		printf("VL53L7CX sensor %d not detected at requested address\r\n", port);
 	   		return status;
 	   	}
 
@@ -106,19 +111,29 @@ static void MX_SPI2_Init(void);
 	status |= vl53l7cx_set_resolution(Dev, resolution);
 	status |= vl53l7cx_set_ranging_frequency_hz(Dev, ranging_frequency);
 	status |= vl53l7cx_set_integration_time_ms(Dev, integration_time);
-	status |= vl53l7cx_set_sharpener_percent(Dev, 0);
+	status |= vl53l7cx_set_sharpener_percent(Dev, sharpener_percent);
 	status |= vl53l7cx_start_ranging(Dev);
 
 	return status;
+ };
+
+ // Comparison function for integers (ascending order)
+ uint16_t compareIntegers(const void *a, const void *b) {
+	 uint16_t valA = *(const uint16_t *)a;
+	 uint16_t valB = *(const uint16_t *)b;
+     return valA - valB; // For descending order, return valB - valA;
  }
 
- uint8_t rightZonesCheck(uint16_t* Values) {
-	 for (int i =58; i<62; i++){
-		 if (Tof_values_2[i] < fx_trigger) return 1;
-	 }
+ // get average of the 2 lowest or highest zones out of 4 based on the sensor
+ uint8_t _4ZonesVal(uint16_t* Values, int sensor, int ZONE_1, int ZONE_2, int ZONE_3, int ZONE_4) {
+	 uint16_t x [4] = {Values[ZONE_1], Values[ZONE_2], Values[ZONE_3], Values[ZONE_4]};
 
-	 return 0;
+	 qsort (x, 4, 2, compareIntegers);
+
+	 if (sensor == 1) return (x[2] + x[3]) / 2;
+	 return  (x[0] + x[1]) / 2;
  }
+
 /* USER CODE END 0 */
 
 /**
@@ -161,31 +176,32 @@ int main(void)
   	/* Init VL53L7CX sensor */
 	status_1 = sensorInit(&Dev_1, 1, &isAlive_1);
 	status_2 = sensorInit(&Dev_2, 2, &isAlive_2);
-	printf("MIDI Board initialization\n");
-	if(midi_Init()) {
-		printf("MIDI Board failed\n");
+	printf("MIDI Board initialization\r\n");
+	if(midi_Init())
+	{
+		printf("MIDI Board failed\r\n");
 		return 13;
 	}
   	if(status_1)
   	{
-  		printf("Volume VL53L7CX ULD Loading failed (Volume)\n");
+  		printf("Volume VL53L7CX ULD Loading failed (Volume)\r\n");
   		ToFSensor_failure();
   		return status_1;
   	}
   	if(status_2)
 	{
-		printf("Pitch VL53L7CX ULD Loading failed (pitch)\n");
+		printf("Pitch VL53L7CX ULD Loading failed (pitch)\r\n");
 		ToFSensor_failure();
 		return status_2;
 	}
-  	printf("VL53L7CX ULD ready ! (Version : %s)\n",VL53L7CX_API_REVISION);
+  	printf("VL53L7CX ULD ready ! (Version : %s)\r\n",VL53L7CX_API_REVISION);
   	ToFSensor_sucess();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t root = 63, vol_scale = 6, note = 0, vol = 0, fx;
-  int fx_zone = 60;
+  uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, fx; // defualt is middle C
+//  int fx_zone = 60;
   while (1)
   {
     /* USER CODE END WHILE */
@@ -219,12 +235,8 @@ int main(void)
 		 continue;
 	 }
 
-	 // 3) Optionally: confirm resolution hasn't changed
-	 // (call once outside loop in practice)
-	 //vl53l7cx_get_resolution(&Dev_1, &resolution);
 
 	 // 4) Copy/pack only VALID distances (status 5) for display
-	 //    (nb_target_detected[zone] > 0 means we have at least one target)
 	 for (int zone = 0; zone < resolution; zone++) {
 //		 uint8_t nb_P = Results_1.nb_target_detected[zone], nb_V = Results_2.nb_target_detected[zone];
 //		 uint8_t st_P = Results_1.target_status[zone], st_V = Results_2.target_status[zone];
@@ -237,23 +249,34 @@ int main(void)
 		 Tof_values_2[zone] = cm_2/3;
 	 }
 	 	 // spot to add playing notes //
-	 vol = 127 - vol_scale*(Tof_values_1[CENTER_ZONE_1] + Tof_values_1[CENTER_ZONE_2] + Tof_values_1[CENTER_ZONE_3] + Tof_values_1[CENTER_ZONE_1])/4; // Close = load & far = quiet
-	 note = (Tof_values_2[CENTER_ZONE_1] + Tof_values_2[CENTER_ZONE_2] + Tof_values_2[CENTER_ZONE_3] + Tof_values_2[CENTER_ZONE_1])/4;
-	 if (note > 12) note = 12;
-	 note += root;		// note  from the base note
+	 vol = 127 - vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4); // Close = load & far = quiet
+	 midiNoteOff(0, note, 127);
+	 uint8_t left_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_3, CENTER_ZONE_4, LEFT_CENTER_1, LEFT_CENTER_2);
+	 uint8_t right_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_1, CENTER_ZONE_2, RIGHT_CENTER_1, RIGHT_CENTER_2);
+	 if (left_center <= right_center)
+	 {
+		 note = left_center;
+		 fx = 0; 					// no reverb
+	 } else
+	 {
+		 note = right_center;
+		 fx = 1;   					//  reverb
+	 }
+	 if (note > 12) note = 12; 		// stay within 1 octave
+	 note += root;					// note  from the base note
 	 if (vol < 0 || vol > 127) vol = 0;			// data validation
 	 if (note > 127) note = 127;
-	 fx = rightZonesCheck(Tof_values_2); // check needed value for effect
 	 // 5) Example print:
+//	 uint8_t Z1=2,Z2=3,Z3=4,Z4=5;
 	 printf("Volume: %02u\t|\t", vol);
-	 printf("Note: %02u\t|\t", note);
-	 printf("Zone %d value: %u -> Reverb: %u\r\n", fx_zone, Tof_values_2[fx_zone], fx);
+	 printf("Note: %02u\t|\tReverb: %u\r\n", note, fx);
+//	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
 
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOn(0, note, 127);
-	 HAL_Delay(50);
-	 midiNoteOff(0, note, 127);
+//	 HAL_Delay(60);
+//	 midiNoteOff(0, note, 127);
 
   }
   /* USER CODE END 3 */
