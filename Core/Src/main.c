@@ -50,6 +50,7 @@
 #define CENTER_ZONE_4 36
 #define LEFT_CENTER_1 43
 #define LEFT_CENTER_2 44
+#define NUM_CHANS 2U
 
 #define OCTAVE 12U
 /* USER CODE END PD */
@@ -60,6 +61,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+ADC_HandleTypeDef hadc1;
+
 I2C_HandleTypeDef hi2c1;
 I2C_HandleTypeDef hi2c2;
 
@@ -68,12 +71,13 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi2;
 
 /* USER CODE BEGIN PV */
-//extern uint8_t UserRxBufferFS[256];
-
 uint8_t resolution=_8x8, ranging_frequency=12, sharpener_percent=14;
 uint16_t integration_time=27;
 uint8_t data_to_transfer=0;
 uint16_t Tof_values_1[64], Tof_values_2[64]; // 64(8x8) max size
+
+ADC_ChannelConfTypeDef ADC_Chan_Config = {0};
+uint32_t ADC_vals[NUM_CHANS], ADC_Channels[NUM_CHANS] = {ADC_CHANNEL_1, ADC_CHANNEL_4};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -83,6 +87,7 @@ static void MX_I2C1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_SPI2_Init(void);
+static void MX_ADC1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -134,6 +139,22 @@ static void MX_SPI2_Init(void);
 	 return  (x[0] + x[1]) / 2;
  }
 
+void Get_ADC_Vals(uint32_t* tempo, uint32_t* treble_bass)
+{
+	for (int i = 0; i < NUM_CHANS; i++)
+	{
+		ADC_Chan_Config.Channel = ADC_Channels[i];
+		if (HAL_ADC_ConfigChannel(&hadc1, &ADC_Chan_Config) != HAL_OK)
+		{
+		Error_Handler();
+		}
+		HAL_ADC_Start(&hadc1);//start conversion
+		HAL_ADC_PollForConversion(&hadc1, 10);//wait for conversion to finish
+		ADC_vals[i] = HAL_ADC_GetValue(&hadc1);//retrieve value
+	}
+	*tempo = ADC_vals[0];
+	*treble_bass = ADC_vals[1];
+}
 /* USER CODE END 0 */
 
 /**
@@ -147,7 +168,6 @@ int main(void)
 	uint8_t status_1, isAlive_1, status_2, isAlive_2;			// 1 = volume  | 2 = pitch
 	VL53L7CX_Configuration Dev_1, Dev_2; /* Sensor configuration */
 	VL53L7CX_ResultsData 	Results_1, Results_2;  // Sensor read out info
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -172,6 +192,7 @@ int main(void)
   MX_LPUART1_UART_Init();
   MX_I2C2_Init();
   MX_SPI2_Init();
+  MX_ADC1_Init();
   /* USER CODE BEGIN 2 */
   	/* Init VL53L7CX sensor */
 	status_1 = sensorInit(&Dev_1, 1, &isAlive_1);
@@ -180,7 +201,7 @@ int main(void)
 	if(midi_Init())
 	{
 		printf("MIDI Board failed\r\n");
-		return 13;
+//		return 13;
 	}
   	if(status_1)
   	{
@@ -200,13 +221,20 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, fx; // defualt is middle C
+  	ADC_Chan_Config.Rank = ADC_REGULAR_RANK_1;
+	ADC_Chan_Config.SamplingTime = ADC_SAMPLETIME_92CYCLES_5;
+	ADC_Chan_Config.SingleDiff = ADC_SINGLE_ENDED;
+	ADC_Chan_Config.OffsetNumber = ADC_OFFSET_NONE;
+	ADC_Chan_Config.Offset = 0;
+	uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, fx; // defualt is middle C
+	uint32_t tempo = 0, Trb_Bass = 0;
 //  int fx_zone = 60;
   while (1)
   {
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  Get_ADC_Vals(&tempo, &Trb_Bass);
 	  uint8_t data_ready_1 = 0, data_ready_2 = 0;
 
 	  status_1 = vl53l7cx_check_data_ready(&Dev_1, &data_ready_1);
@@ -268,16 +296,14 @@ int main(void)
 	 if (note > 127) note = 127;
 	 // 5) Example print:
 //	 uint8_t Z1=2,Z2=3,Z3=4,Z4=5;
-	 printf("Volume: %02u\t|\t", vol);
-	 printf("Note: %02u\t|\tReverb: %u\r\n", note, fx);
+	 printf("Volume: %02u|\t", vol);
+	 printf("Note: %02u|\tReverb: %u|\tTempo: %u|\tTreble&Bass: %u\r\n", note, fx, tempo, Trb_Bass);
 //	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
 
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOn(0, note, 127);
-//	 HAL_Delay(60);
-//	 midiNoteOff(0, note, 127);
-
+	 HAL_Delay(tempo);
   }
   /* USER CODE END 3 */
 }
@@ -324,6 +350,64 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief ADC1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_ADC1_Init(void)
+{
+
+  /* USER CODE BEGIN ADC1_Init 0 */
+
+  /* USER CODE END ADC1_Init 0 */
+
+  ADC_ChannelConfTypeDef sConfig = {0};
+
+  /* USER CODE BEGIN ADC1_Init 1 */
+
+  /* USER CODE END ADC1_Init 1 */
+
+  /** Common config
+  */
+  hadc1.Instance = ADC1;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_ASYNC_DIV32;
+  hadc1.Init.Resolution = ADC_RESOLUTION_12B;
+  hadc1.Init.DataAlign = ADC_DATAALIGN_RIGHT;
+  hadc1.Init.ScanConvMode = ADC_SCAN_DISABLE;
+  hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+  hadc1.Init.LowPowerAutoWait = DISABLE;
+  hadc1.Init.ContinuousConvMode = DISABLE;
+  hadc1.Init.NbrOfConversion = 1;
+  hadc1.Init.DiscontinuousConvMode = DISABLE;
+  hadc1.Init.ExternalTrigConv = ADC_SOFTWARE_START;
+  hadc1.Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_NONE;
+  hadc1.Init.DMAContinuousRequests = DISABLE;
+  hadc1.Init.Overrun = ADC_OVR_DATA_PRESERVED;
+  hadc1.Init.OversamplingMode = DISABLE;
+  if (HAL_ADC_Init(&hadc1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Regular Channel
+  */
+  sConfig.Channel = ADC_CHANNEL_1;
+  sConfig.Rank = ADC_REGULAR_RANK_1;
+  sConfig.SamplingTime = ADC_SAMPLETIME_92CYCLES_5;
+  sConfig.SingleDiff = ADC_SINGLE_ENDED;
+  sConfig.OffsetNumber = ADC_OFFSET_NONE;
+  sConfig.Offset = 0;
+  if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN ADC1_Init 2 */
+
+  /* USER CODE END ADC1_Init 2 */
+
 }
 
 /**
