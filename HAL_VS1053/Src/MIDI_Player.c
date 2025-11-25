@@ -10,12 +10,12 @@ uint8_t midi_Init()
 	/* Initialize VS1053 */
     uint8_t status = VS1053_Init();
 
-    status |= midi_Treble_Bass(4, 8);
+    status |= midi_Treble_Bass(0, 0);
     status |= midi_SetChannelBank(0, BANK_MELODY);
-    status |= midi_SetInstrument(0, MEL_VIBRAPHONE);
+    status |= midi_SetInstrument(0, MEL_E_GUITAR);
     status |= midi_SetChannelVolume(0, 127);
     status |= midi_SetChannelReverb(0, 0);
-    status |= midi_SetChannelReverbDecay(0, 85);
+    status |= midi_SetChannelReverbDecay(0, 55);
     status |= midi_SetChannelSustenuto(0, 127);
 
     return status;
