@@ -16,7 +16,7 @@ uint8_t midi_Init()
     status |= midi_SetChannelVolume(0, 127);
     status |= midi_SetChannelReverb(0, 0);
     status |= midi_SetChannelReverbDecay(0, 55);
-    status |= midi_SetChannelSustenuto(0, 127);
+    status |= midi_SetChannelSustenuto(0, 255);
 
     return status;
 }
@@ -78,7 +78,7 @@ uint8_t midi_SetChannelBank(uint8_t chan, uint8_t bank)
 uint8_t midi_SetChannelSustenuto(uint8_t chan, uint8_t length)
 {
 	if (chan > 15) return MIDI_ERROR;
-	if (length> 127) return MIDI_ERROR;
+//	if (length> 127) return MIDI_ERROR;
 
 	uint8_t status = VS1053_SdiWrite(START_MSG);
 	status |= VS1053_SdiWrite(MIDI_CHAN_MSG | chan);
