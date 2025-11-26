@@ -71,7 +71,7 @@ UART_HandleTypeDef hlpuart1;
 SPI_HandleTypeDef hspi2;
 
 /* USER CODE BEGIN PV */
-uint8_t resolution=_8x8, ranging_frequency=12, sharpener_percent=14;
+uint8_t resolution=_8x8, ranging_frequency=13, sharpener_percent=14;
 uint16_t integration_time=27;
 uint8_t data_to_transfer=0;
 uint16_t Tof_values_1[64], Tof_values_2[64]; // 64(8x8) max size
@@ -201,7 +201,7 @@ int main(void)
 	if(midi_Init())
 	{
 		printf("MIDI Board failed\r\n");
-//		return 13;
+		return 13;
 	}
   	if(status_1)
   	{
@@ -234,7 +234,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	  // pedal effect (tempo & treble mute & bass enhance)
 	  Get_ADC_Vals(&tempo, &Trb_Bass);
+	  uint8_t bass = Trb_Bass/ 267;
+	  int treble = -Trb_Bass/ 500;
+	  midi_Treble_Bass(treble, bass);
+
 	  uint8_t data_ready_1 = 0, data_ready_2 = 0;
 
 	  status_1 = vl53l7cx_check_data_ready(&Dev_1, &data_ready_1);
@@ -278,9 +283,9 @@ int main(void)
 	 }
 	 	 // spot to add playing notes //
 	 vol = 127 - vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4); // Close = load & far = quiet
-	 midiNoteOff(0, note, 127);
 	 uint8_t left_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_3, CENTER_ZONE_4, LEFT_CENTER_1, LEFT_CENTER_2);
 	 uint8_t right_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_1, CENTER_ZONE_2, RIGHT_CENTER_1, RIGHT_CENTER_2);
+	 midiNoteOff(0, note, 127);
 	 if (left_center <= right_center)
 	 {
 		 note = left_center;
@@ -297,9 +302,8 @@ int main(void)
 	 // 5) Example print:
 //	 uint8_t Z1=2,Z2=3,Z3=4,Z4=5;
 	 printf("Volume: %02u|\t", vol);
-	 printf("Note: %02u|\tReverb: %u|\tTempo: %u|\tTreble&Bass: %u\r\n", note, fx, tempo, Trb_Bass);
+	 printf("Note: %02u|\tReverb: %u|\tTempo: %03u|\tTreble&Bass: %02d\t%02u\r\n", note, fx, tempo, treble, bass);
 //	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
-
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOn(0, note, 127);
