@@ -12,6 +12,7 @@
 
 #include "platform.h"
 
+#define Delay 1000U
 uint8_t VL53L7CX_RdByte(
 		VL53L7CX_Platform *p_platform,
 		uint16_t RegisterAdress,
@@ -23,8 +24,8 @@ uint8_t VL53L7CX_RdByte(
 
 	data_write[0] = (RegisterAdress >> 8) & 0xFF;
 	data_write[1] = RegisterAdress & 0xFF;
-	status |= HAL_I2C_Master_Transmit(&p_platform->i2c, p_platform->address, data_write, 2, HAL_MAX_DELAY);
-	status |= HAL_I2C_Master_Receive(&p_platform->i2c, p_platform->address, data_read, 1, HAL_MAX_DELAY);
+	status |= HAL_I2C_Master_Transmit(&p_platform->i2c, p_platform->address, data_write, 2, Delay);
+	status |= HAL_I2C_Master_Receive(&p_platform->i2c, p_platform->address, data_read, 1, Delay);
 	*p_value = data_read[0];
 
 	return status;
@@ -41,7 +42,7 @@ uint8_t VL53L7CX_WrByte(
 	data_write[0] = (RegisterAdress >> 8) & 0xFF;
 	data_write[1] = RegisterAdress & 0xFF;
 	data_write[2] = value & 0xFF;
-	status = HAL_I2C_Master_Transmit(&p_platform->i2c,p_platform->address, data_write, 3, HAL_MAX_DELAY);
+	status = HAL_I2C_Master_Transmit(&p_platform->i2c,p_platform->address, data_write, 3, Delay);
 
 	return status;
 }
@@ -68,8 +69,8 @@ uint8_t VL53L7CX_RdMulti(
 	uint8_t data_write[2];
 	data_write[0] = (RegisterAdress>>8) & 0xFF;
 	data_write[1] = RegisterAdress & 0xFF;
-	status |= HAL_I2C_Master_Transmit(&p_platform->i2c, p_platform->address, data_write, 2, HAL_MAX_DELAY);
-	status |= HAL_I2C_Master_Receive(&p_platform->i2c, p_platform->address, p_values, size, HAL_MAX_DELAY);
+	status |= HAL_I2C_Master_Transmit(&p_platform->i2c, p_platform->address, data_write, 2, Delay);
+	status |= HAL_I2C_Master_Receive(&p_platform->i2c, p_platform->address, p_values, size, Delay);
 
 	return status;
 }
