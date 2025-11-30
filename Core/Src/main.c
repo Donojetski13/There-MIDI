@@ -226,7 +226,7 @@ int main(void)
 	ADC_Chan_Config.SingleDiff = ADC_SINGLE_ENDED;
 	ADC_Chan_Config.OffsetNumber = ADC_OFFSET_NONE;
 	ADC_Chan_Config.Offset = 0;
-	uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, fx; // defualt is middle C
+	uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, last_note, fx; // defualt is middle C
 	uint32_t tempo = 0, Trb_Bass = 0;
 //  int fx_zone = 60;
   while (1)
@@ -235,6 +235,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 	  // pedal effect (tempo & treble mute & bass enhance)
+	  last_note = note;
 	  Get_ADC_Vals(&tempo, &Trb_Bass);
 	  uint8_t bass = Trb_Bass/ 267;
 	  int treble = -Trb_Bass/ 500;
@@ -285,7 +286,6 @@ int main(void)
 	 vol = 127 - vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4); // Close = load & far = quiet
 	 uint8_t left_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_3, CENTER_ZONE_4, LEFT_CENTER_1, LEFT_CENTER_2);
 	 uint8_t right_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_1, CENTER_ZONE_2, RIGHT_CENTER_1, RIGHT_CENTER_2);
-	 midiNoteOff(0, note, 127);
 	 if (left_center <= right_center)
 	 {
 		 note = left_center;
@@ -306,6 +306,7 @@ int main(void)
 //	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
+	 midiNoteOff(0, last_note, 127);
 	 midiNoteOn(0, note, 127);
 	 HAL_Delay(tempo);
   }
