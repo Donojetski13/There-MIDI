@@ -51,6 +51,10 @@
 #define LEFT_CENTER_1 43
 #define LEFT_CENTER_2 44
 #define NUM_CHANS 2U
+#define LED_MAX 6
+#define USE_BRIGHTNESS 1 // 1 = control brightness, 0 = not controlling brightness
+#define PI 3.14159265
+#define TIM_1 ((TIM_TypeDef *) (((0x40000000UL) + 0x00010000UL) + 0x2C00UL))
 
 #define OCTAVE 12U
 /* USER CODE END PD */
@@ -70,8 +74,13 @@ UART_HandleTypeDef hlpuart1;
 
 SPI_HandleTypeDef hspi2;
 
+TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
+DMA_HandleTypeDef hdma_tim1_ch1;
+DMA_HandleTypeDef hdma_tim2_ch1;
+
 /* USER CODE BEGIN PV */
-uint8_t resolution=_8x8, ranging_frequency=12, sharpener_percent=20;
+uint8_t resolution=_8x8, ranging_frequency=15, sharpener_percent=20;
 uint16_t integration_time=20;
 uint8_t data_to_transfer=0;
 uint16_t Tof_values_1[64], Tof_values_2[64]; // 64(8x8) max size
@@ -83,21 +92,152 @@ uint32_t ADC_vals[NUM_CHANS], ADC_Channels[NUM_CHANS] = {ADC_CHANNEL_1, ADC_CHAN
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_LPUART1_UART_Init(void);
 static void MX_I2C2_Init(void);
 static void MX_SPI2_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// void printGrid(uint8_t* vals, int res) {
-//	 printf("Zone %d distance: %d mm", 0, valConcat(Tof_values_1,0));
-// }
+uint8_t LED_Data_1[LED_MAX][4], LED_Data_2[LED_MAX][4];
+uint8_t LED_Mod_1[LED_MAX][4], LED_Mod_2[LED_MAX][4]; // for brightness
 
+int datasentflag_1 = 0; // ensures DMA is not sending another data when first DMA is still being transmitted
+int datasentflag_2 = 0;
+
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim) {
+	if (  htim->Instance == TIM_1)
+	{
+		HAL_TIM_PWM_Stop_DMA(&htim1, TIM_CHANNEL_1);
+		datasentflag_1 = 1;
+	}
+	else
+	{
+		HAL_TIM_PWM_Stop_DMA(&htim2, TIM_CHANNEL_1);
+		datasentflag_2 = 1;
+	}
+}
+
+void Set_LED (uint8_t (*LED)[4], int LEDnum, int Red, int Green, int Blue) {
+	LED[LEDnum][0] = LEDnum;
+	LED[LEDnum][1] = Green;
+	LED[LEDnum][2] = Red;
+	LED[LEDnum][3] = Blue;
+}
+
+void Set_Brightness(uint8_t (*LED_D)[4], uint8_t (*LED_M)[4], int brightness) // 0 - 45
+{
+#if USE_BRIGHTNESS
+	if (brightness > 45) {
+		brightness = 45;
+	}
+
+	for (int i = 0; i < LED_MAX; i++) {
+		LED_M[i][0] = LED_D[i][0];
+
+		for (int j = 1; j < 4; j++) {
+			float angle = 90 - brightness; // in degrees
+			angle = angle * PI / 180; // in radians
+			LED_M[i][j] = (LED_D[i][j]);
+		}
+	}
+#endif
+}
+
+uint32_t pwmData_1[(24*LED_MAX) + 50];
+uint32_t pwmData_2[(24*LED_MAX) + 50];
+
+void WS2812_Send (uint32_t* pmw_D, uint8_t (*LED_M)[4], int timer) {
+	uint32_t indx = 0;
+	uint32_t color;
+
+	for (int i = 0; i < LED_MAX; i++) {
+		color = ((LED_M[i][1] << 16) | (LED_M[i][2] << 8) | (LED_M[i][3])); // GREEN RED BLUE
+
+		for (int j = 23; j >= 0; j--) {
+			if (color & (1<<j)) {
+				pmw_D[indx] = 26; // 2/3 of 39 (reload value)
+			}
+			else {
+				pmw_D[indx] = 13; // 1/3 of 39 (reload value)
+			}
+
+			indx++;
+		}
+	}
+
+	// sending 50 bits of 0 to signify end of data transfer
+	for (int i = 0; i < 50; i++) {
+		pmw_D[indx] = 0;
+		indx++;
+	}
+	if (timer == 1)
+	{
+		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, (uint32_t *)pmw_D, indx);
+		while (!datasentflag_1) {}; // DMA has been stopped and can send another set of data now
+		datasentflag_1 = 0;
+	} else
+	{
+		HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_1, (uint32_t *)pmw_D, indx);
+		while (!datasentflag_2) {}; // DMA has been stopped and can send another set of data now
+		datasentflag_2 = 0;
+	}
+}
+
+void send(uint32_t* pmw_D, int Green, int Red, int Blue, int timer) {
+	uint32_t data = (Green << 16) | (Red << 8) | Blue;
+
+	for (int i = 23; i >= 0; i--) {
+		if (data & (1 << i)) {
+			pmw_D[i] = 26;
+		}
+		else {
+			pmw_D[i] = 13;
+		}
+	}
+
+	if (timer == 1)
+	{
+		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, pmw_D, 24);
+	} else
+	{
+		HAL_TIM_PWM_Start_DMA(&htim2, TIM_CHANNEL_1, pmw_D, 24);
+	}
+}
+ void sensor2LED(uint8_t output, uint8_t sensor) {
+	 if (sensor == 1) output /= 21;
+	 else
+	 {
+		 output /= 2;
+		 if (output > 6) output = 6;
+	 }
+	 for (int i = 0; i < output; i++)
+	 {
+		 if (sensor == 1)Set_LED(LED_Data_2, (6-i),0,210,140);
+
+		 else Set_LED(LED_Data_1, (6-i),0,210,140);
+	 }
+
+	 if (sensor == 1)
+	 {
+		 Set_Brightness(LED_Data_2, LED_Mod_2, 45);
+		 WS2812_Send(pwmData_2, LED_Mod_2,2);
+	 }
+	 else
+	 {
+		 Set_Brightness(LED_Data_1, LED_Mod_1, 45);
+		 WS2812_Send(pwmData_1, LED_Mod_1,1);
+	 }
+
+
+ }
  uint8_t sensorInit(VL53L7CX_Configuration* Dev, int port, uint8_t* isAlive) {
 	 printf("VL53L7CX sensor %d Initialization start\r\n", port);
 	 Dev->platform.address = ToF_W;
@@ -105,11 +245,11 @@ static void MX_ADC1_Init(void);
 	 else if (port == 2) Dev->platform.i2c = hi2c2;
 
 	 uint8_t status = vl53l7cx_is_alive(Dev, isAlive);
-	   	if(!(*isAlive) || status)
-	   	{
-	   		printf("VL53L7CX sensor %d not detected at requested address\r\n", port);
-	   		return status;
-	   	}
+	if(!(*isAlive) || status)
+	{
+		printf("VL53L7CX sensor %d not detected at requested address\r\n", port);
+		return status;
+	}
 
 	status |= vl53l7cx_init(Dev);
 	status |= vl53l7cx_set_ranging_mode(Dev, Auto);
@@ -155,6 +295,11 @@ void Get_ADC_Vals(uint32_t* tempo, uint32_t* treble_bass)
 	*tempo = ADC_vals[0];
 	*treble_bass = ADC_vals[1];
 }
+
+uint16_t Button1[4] = {}, Button2[4] = {}, Button3[4] = {}, Button4[4] = {}, Button5[4] = {}; // Xmin, Xmax, Ymin, Ymax
+int zoneClicked (uint16_t x, uint16_t y, uint16_t* button){
+	return (((x > button[0]) && (x < button[1])) && ((y > button[2]) && (y < button[3])));
+}
 /* USER CODE END 0 */
 
 /**
@@ -188,11 +333,14 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_LPUART1_UART_Init();
   MX_I2C2_Init();
   MX_SPI2_Init();
   MX_ADC1_Init();
+  MX_TIM2_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   	/* Init VL53L7CX sensor */
 	status_1 = sensorInit(&Dev_1, 1, &isAlive_1);
@@ -309,6 +457,10 @@ int main(void)
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOff(0, last_note, 127);
 	 midiNoteOn(0, note, 127);
+
+	 sensor2LED(vol, 1);    // volume and pitch LED level
+	 sensor2LED(note-root, 2);
+
 	 HAL_Delay(tempo);
   }
   /* USER CODE END 3 */
@@ -336,7 +488,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = 0;
-  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
+  RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_10;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -352,7 +504,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -432,7 +584,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.Timing = 0x00000508;
+  hi2c1.Init.Timing = 0x00503D58;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -480,7 +632,7 @@ static void MX_I2C2_Init(void)
 
   /* USER CODE END I2C2_Init 1 */
   hi2c2.Instance = I2C2;
-  hi2c2.Init.Timing = 0x00000508;
+  hi2c2.Init.Timing = 0x00503D58;
   hi2c2.Init.OwnAddress1 = 0;
   hi2c2.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
   hi2c2.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
@@ -601,6 +753,165 @@ static void MX_SPI2_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 39;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
+  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
+  sBreakDeadTimeConfig.Break2Filter = 0;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 39;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -617,11 +928,11 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOF_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   HAL_PWREx_EnableVddIO2();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_RESET);
