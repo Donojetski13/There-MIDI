@@ -40,7 +40,7 @@
 #define ToF_R 0x53
 #define _4x4 ((uint8_t) 16U)
 #define _8x8 ((uint8_t) 64U)
-#define continus 1U
+#define continuous 1U
 #define Auto 3U
 #define RIGHT_CENTER_1 19
 #define RIGHT_CENTER_2 20
@@ -53,10 +53,26 @@
 #define NUM_CHANS 2U
 #define LED_MAX 6
 #define USE_BRIGHTNESS 1 // 1 = control brightness, 0 = not controlling brightness
+#define MAX_PEDAL_VAL 3000U
 #define PI 3.14159265
 #define TIM_1 ((TIM_TypeDef *) (((0x40000000UL) + 0x00010000UL) + 0x2C00UL))
 
 #define OCTAVE 12U
+
+#define B1_PORT			GPIOE
+#define B1_PIN			GPIO_PIN_10 // last SPI status
+
+#define	B2_PORT			GPIOE
+#define	B2_PIN			GPIO_PIN_7 // PB0 reset
+
+#define B3_PORT			GPIOE
+#define B3_PIN			GPIO_PIN_8 // command start
+
+#define B4_PORT			GPIOF
+#define B4_PIN			GPIO_PIN_15 // Data start
+
+#define B5_PORT			GPIOE
+#define B5_PIN			GPIO_PIN_13 // Data start
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -106,6 +122,10 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+uint8_t instruments[11] = {MEL_GRAND_PIANO, MEL_VIBRAPHONE, MEL_A_GUITAR,
+						   MEL_E_GUITAR, MEL_VIOLIN, MEL_TRUMPET, MEL_A_SAX,
+						   MEL_OCARINA, MEL_SCIFI, MEL_Timpani, MEL_GOBLINS};
 uint8_t LED_Data_1[LED_MAX][4], LED_Data_2[LED_MAX][4];
 uint8_t LED_Mod_1[LED_MAX][4], LED_Mod_2[LED_MAX][4]; // for brightness
 
@@ -212,27 +232,46 @@ void send(uint32_t* pmw_D, int Green, int Red, int Blue, int timer) {
 	}
 }
  void sensor2LED(uint8_t output, uint8_t sensor) {
-	 if (sensor == 1) output /= 21;
+	 uint8_t num, light;
+	 if (sensor == 1)
+	 {
+		 num = output / 21;
+		 light = (int)(output / 10.5) % 2;
+	 }
 	 else
 	 {
-		 output /= 2;
-		 if (output > 6) output = 6;
+		 num = output / 2;
+		 light = output % 2;
+		 if (num > 6) num = 6;
 	 }
-	 for (int i = 0; i < output; i++)
-	 {
-		 if (sensor == 1)Set_LED(LED_Data_2, (6-i),0,210,140);
 
-		 else Set_LED(LED_Data_1, (6-i),0,210,140);
+	 // start with all off
+	 for (int i = 0; i < LED_MAX; i++)
+	 	 {
+	 		 if (sensor == 1)Set_LED(LED_Data_2, (LED_MAX-1-i),0,0,0);
+
+	 		 else Set_LED(LED_Data_1, (LED_MAX-1-i),0,0,0);
+	 	 }
+
+	 for (int i = 0; i < (num+light); i++)
+	 {
+		 if (sensor == 1)
+			 if (light && (i == (num+light)-1)) Set_LED(LED_Data_2, (LED_MAX-1-i),0,0,70);
+			 else Set_LED(LED_Data_2, (LED_MAX-1-i),0,100,70);
+
+		 else
+			 if (light && (i == (num+light)-1)) Set_LED(LED_Data_1, (LED_MAX-1-i),0,0,70);
+			 else Set_LED(LED_Data_1, (LED_MAX-1-i),0,100,70);
 	 }
 
 	 if (sensor == 1)
 	 {
-		 Set_Brightness(LED_Data_2, LED_Mod_2, 45);
+		 Set_Brightness(LED_Data_2, LED_Mod_2, 30);
 		 WS2812_Send(pwmData_2, LED_Mod_2,2);
 	 }
 	 else
 	 {
-		 Set_Brightness(LED_Data_1, LED_Mod_1, 45);
+		 Set_Brightness(LED_Data_1, LED_Mod_1, 30);
 		 WS2812_Send(pwmData_1, LED_Mod_1,1);
 	 }
 
@@ -300,6 +339,28 @@ uint16_t Button1[4] = {}, Button2[4] = {}, Button3[4] = {}, Button4[4] = {}, But
 int zoneClicked (uint16_t x, uint16_t y, uint16_t* button){
 	return (((x > button[0]) && (x < button[1])) && ((y > button[2]) && (y < button[3])));
 }
+
+int instr = 0;
+void change_instrument(int direction)
+{
+	if (direction) midi_SetInstrument(0,instruments[(++instr)%11]);
+	else midi_SetInstrument(0,instruments[(--instr)%11]);
+}
+
+int root = 60;
+void change_octave(int direction)
+{
+	if (direction)
+	{
+		root += 12;
+		if (root > 120) root = 120;
+	}
+	else
+	{
+		root -= 12;
+		if (root < 0) root = 0;
+	}
+}
 /* USER CODE END 0 */
 
 /**
@@ -349,19 +410,22 @@ int main(void)
 	if(midi_Init())
 	{
 		printf("MIDI Board failed\r\n");
-		return 13;
+		HAL_NVIC_SystemReset();
+		return 3;
 	}
   	if(status_1)
   	{
   		printf("Volume VL53L7CX ULD Loading failed (Volume)\r\n");
   		ToFSensor_failure();
-  		return status_1;
+  		HAL_NVIC_SystemReset();
+  		return 1;
   	}
   	if(status_2)
 	{
 		printf("Pitch VL53L7CX ULD Loading failed (pitch)\r\n");
 		ToFSensor_failure();
-		return status_2;
+		HAL_NVIC_SystemReset();
+		return 2;
 	}
   	printf("VL53L7CX ULD ready ! (Version : %s)\r\n",VL53L7CX_API_REVISION);
   	ToFSensor_sucess();
@@ -374,7 +438,7 @@ int main(void)
 	ADC_Chan_Config.SingleDiff = ADC_SINGLE_ENDED;
 	ADC_Chan_Config.OffsetNumber = ADC_OFFSET_NONE;
 	ADC_Chan_Config.Offset = 0;
-	uint8_t root = 60, vol_scale = 6, note = 0, vol = 0, last_note, fx; // defualt is middle C
+	uint8_t vol_scale = 6, note = 0, vol = 0, last_note, fx; // defualt is middle C
 	uint32_t tempo = 0, Trb_Bass = 0;
 //  int fx_zone = 60;
   while (1)
@@ -385,9 +449,15 @@ int main(void)
 	  // pedal effect (tempo & treble mute & bass enhance)
 	  last_note = note;
 	  Get_ADC_Vals(&tempo, &Trb_Bass);
-	  uint8_t bass = Trb_Bass/ 267;
-	  int treble = -((int)Trb_Bass)/ 500;
+	  tempo *= 2; Trb_Bass *= 2; // scale pedal values
+	  uint8_t bass = Trb_Bass/ (2*MAX_PEDAL_VAL/15); 		// process bass value
+	  int treble = (Trb_Bass)/ (2*MAX_PEDAL_VAL/8);	// process treble value
+	  treble *= -1;
 	  midi_Treble_Bass(treble, bass);
+	  if (HAL_GPIO_ReadPin(B2_PORT, B2_PIN)) change_instrument(0);
+	  if (HAL_GPIO_ReadPin(B3_PORT, B3_PIN)) change_instrument(1);
+	  if (HAL_GPIO_ReadPin(B4_PORT, B4_PIN)) change_octave(0);
+	  if (HAL_GPIO_ReadPin(B5_PORT, B5_PIN)) change_octave(1);
 
 	  uint8_t data_ready_1 = 0, data_ready_2 = 0;
 
@@ -431,7 +501,7 @@ int main(void)
 		 Tof_values_2[zone] = cm_2/3;
 	 }
 	 	 // spot to add playing notes //
-	 uint8_t _vol = vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4);
+	 uint16_t _vol = vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4);
 	 if (_vol > 127) _vol = 127;			// limit value
 	 vol = 127 - _vol; // Close = load & far = quiet
 	 uint8_t left_center = _4ZonesVal(Tof_values_2, 2, CENTER_ZONE_3, CENTER_ZONE_4, LEFT_CENTER_1, LEFT_CENTER_2);
@@ -450,8 +520,8 @@ int main(void)
 	 if (note > 127) note = 127;
 	 // 5) Example print:
 //	 uint8_t Z1=2,Z2=3,Z3=4,Z4=5;
-	 printf("Volume: %02u|\t", Tof_values_1[CENTER_ZONE_1]);
-	 printf("Note: %02u|\tReverb: %u|\tTempo: %03u|\tTreble&Bass: %02d\t%02u\r\n", note, fx, tempo, treble, bass);
+	 printf("Volume: %02u|\t", vol);
+	 printf("Note: %02u|\tReverb: %u|\tTempo: %04u|\tTreble&Bass: %d\t%02u\r\n", note, fx, tempo, treble, bass);
 //	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
@@ -963,6 +1033,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PF15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
+
   /*Configure GPIO pins : PG0 USB_OverCurrent_Pin */
   GPIO_InitStruct.Pin = GPIO_PIN_0|USB_OverCurrent_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -975,6 +1051,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOG, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PE7 PE8 PE10 PE13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_7|GPIO_PIN_8|GPIO_PIN_10|GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : STLK_RX_Pin STLK_TX_Pin */
   GPIO_InitStruct.Pin = STLK_RX_Pin|STLK_TX_Pin;
