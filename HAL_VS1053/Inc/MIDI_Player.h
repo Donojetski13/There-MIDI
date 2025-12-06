@@ -10,11 +10,15 @@
 // See http://www.vlsi.fi/fileadmin/datasheets/vs1053.pdf Pg 32 for more!
 #define MEL_GRAND_PIANO 1
 #define MEL_VIBRAPHONE 12
-#define MEL_E_GUITAR 30
+#define MEL_A_GUITAR 25
+#define MEL_E_GUITAR 28
 #define MEL_VIOLIN 41
+#define MEL_TRUMPET 57
+#define MEL_A_SAX 66
 #define MEL_OCARINA 80
+#define MEL_GOBLINS 102
 #define MEL_SCIFI 104
-#define MEL_SYN_DRUM 119
+#define MEL_Timpani 48
 
 #define MIDI_NOTE_ON  0x90
 #define MIDI_NOTE_OFF 0x80
