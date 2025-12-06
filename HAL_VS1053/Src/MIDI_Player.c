@@ -10,12 +10,12 @@ uint8_t midi_Init()
 	/* Initialize VS1053 */
     uint8_t status = VS1053_Init();
 
-    status |= midi_Treble_Bass(0, 0);
+//    status |= midi_Treble_Bass(0, 0);
     status |= midi_SetChannelBank(0, BANK_MELODY);
-    status |= midi_SetInstrument(0, MEL_E_GUITAR);
+    status |= midi_SetInstrument(0, 54);
     status |= midi_SetChannelVolume(0, 127);
     status |= midi_SetChannelReverb(0, 0);
-    status |= midi_SetChannelReverbDecay(0, 55);
+    status |= midi_SetChannelReverbDecay(0, 50);
     status |= midi_SetChannelSustenuto(0, 255);
 
     return status;
@@ -24,9 +24,9 @@ uint8_t midi_Init()
 uint8_t midi_Treble_Bass(int Treble, uint8_t bass)
 {
 	if ((Treble < -8 || Treble > 7) || bass > 15) return MIDI_ERROR;
-	uint8_t t_lower_lim_freq = 0, b_lower_lim_freq = 0;
-	uint16_t treble_bass_setting = ((Treble<<4)+t_lower_lim_freq)<<8;
-	treble_bass_setting += ((bass<<4)+b_lower_lim_freq);
+	uint8_t t_lower_lim_freq = 20, b_lower_lim_freq = 30;
+	uint16_t treble_bass_setting = (Treble<<12) | (t_lower_lim_freq<<8) |
+			 	 	 	 	 	   (bass<<4) | (b_lower_lim_freq);
 
 	uint8_t status = VS1053_SciWrite(VS1053_REG_BASS, treble_bass_setting);
 
