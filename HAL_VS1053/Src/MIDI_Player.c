@@ -10,9 +10,8 @@ uint8_t midi_Init()
 	/* Initialize VS1053 */
     uint8_t status = VS1053_Init();
 
-//    status |= midi_Treble_Bass(0, 0);
     status |= midi_SetChannelBank(0, BANK_MELODY);
-    status |= midi_SetInstrument(0, 54);
+    status |= midi_SetInstrument(0, MEL_GRAND_PIANO);
     status |= midi_SetChannelVolume(0, 127);
     status |= midi_SetChannelReverb(0, 0);
     status |= midi_SetChannelReverbDecay(0, 50);
@@ -24,7 +23,7 @@ uint8_t midi_Init()
 uint8_t midi_Treble_Bass(int Treble, uint8_t bass)
 {
 	if ((Treble < -8 || Treble > 7) || bass > 15) return MIDI_ERROR;
-	uint8_t t_lower_lim_freq = 20, b_lower_lim_freq = 30;
+	uint8_t t_lower_lim_freq = 2, b_lower_lim_freq = 15;
 	uint16_t treble_bass_setting = (Treble<<12) | (t_lower_lim_freq<<8) |
 			 	 	 	 	 	   (bass<<4) | (b_lower_lim_freq);
 
@@ -155,7 +154,7 @@ uint8_t midiNoteOff(uint8_t chan, uint8_t n, uint8_t vel)
 void ToFSensor_sucess()
 {
 	printf("Playing Init success\r\n");
-	midi_SetChannelVolume(0, 70);
+	midi_SetChannelVolume(0, 90);
 	for (uint8_t i=60; i<69; i++) {
 		midiNoteOn(0, i, 127);
 		HAL_Delay(150);
@@ -168,14 +167,17 @@ void ToFSensor_failure()
 {
 	printf("Playing Init failed\r\n");
 	uint8_t note = 70;
-	midi_SetChannelVolume(0, 70);
-	midi_Treble_Bass(7, 8);
-	HAL_Delay(10);
+	midi_SetChannelVolume(0, 110);
+	midi_Treble_Bass(7, 0);
+	midi_SetInstrument(0, MEL_TRUMPET);
+	HAL_Delay(50);
 	for (int i= 0; i< 3;i++){
 		midiNoteOn(0, note, 127);
 		HAL_Delay(300);
 		midiNoteOff(0, note, 127);
 		HAL_Delay(175);
 	}
+	midi_Treble_Bass(0, 0);
+	midi_SetInstrument(0, MEL_GRAND_PIANO);
 	printf("Stopped Playing Init failed\r\n");
 }
