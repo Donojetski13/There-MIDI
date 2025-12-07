@@ -58,6 +58,10 @@
 #define TIM_1 ((TIM_TypeDef *) (((0x40000000UL) + 0x00010000UL) + 0x2C00UL))
 
 #define OCTAVE 12U
+#define PLAY_ZONE_SIZE 4
+#define NOTE_RANGE 18
+#define NUM_SCALES 3
+#define NUM_INSTRUMENTS 11
 
 #define B1_PORT			GPIOE
 #define B1_PIN			GPIO_PIN_10 // last SPI status
@@ -122,10 +126,17 @@ static void MX_TIM1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_GPIO_EXTI_Callback(uint16_t pin) {
+	HAL_NVIC_SystemReset();
+}
+char* Scales[NUM_SCALES] = {"Chr", "Maj", "Min"};
+char* Intruments[NUM_INSTRUMENTS] = {"Piano", "Vibraphone", "Acoustic Guitar", "Electric Guitar", "Violin", "Trumpet", "Alto Saxophone", "Ocarina", "Sci-Fi", "Timpani", "Goblins"};
+char* Notes[29] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B","C", "C#", "D", "D#", "E"};
 
-uint8_t instruments[11] = {MEL_GRAND_PIANO, MEL_VIBRAPHONE, MEL_A_GUITAR,
-						   MEL_E_GUITAR, MEL_VIOLIN, MEL_TRUMPET, MEL_A_SAX,
-						   MEL_OCARINA, MEL_SCIFI, MEL_Timpani, MEL_GOBLINS};
+uint8_t scales[NUM_SCALES][NOTE_RANGE+1] = {{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18},{0,2,4,5,7,9,11,12,14,16,17,19,21,23,24,26,28},{0,2,3,5,7,8,10,12,14,15,17,19,20,22,24,26,27}};
+uint8_t instruments[NUM_INSTRUMENTS] = {MEL_GRAND_PIANO, MEL_VIBRAPHONE, MEL_A_GUITAR,
+									    MEL_E_GUITAR, MEL_VIOLIN, MEL_TRUMPET, MEL_A_SAX,
+									    MEL_OCARINA, MEL_SCIFI, MEL_Timpani, MEL_GOBLINS};
 uint8_t LED_Data_1[LED_MAX][4], LED_Data_2[LED_MAX][4];
 uint8_t LED_Mod_1[LED_MAX][4], LED_Mod_2[LED_MAX][4]; // for brightness
 
@@ -343,8 +354,8 @@ int zoneClicked (uint16_t x, uint16_t y, uint16_t* button){
 int instr = 0;
 void change_instrument(int direction)
 {
-	if (direction) midi_SetInstrument(0,instruments[(++instr)%11]);
-	else midi_SetInstrument(0,instruments[(--instr)%11]);
+	if (direction) midi_SetInstrument(0,instruments[(++instr)%NUM_INSTRUMENTS]);
+	else midi_SetInstrument(0,instruments[(--instr)%NUM_INSTRUMENTS]);
 }
 
 int root = 60;
@@ -353,13 +364,18 @@ void change_octave(int direction)
 	if (direction)
 	{
 		root += 12;
-		if (root > 120) root = 120;
+		if (root > 120) root = 108;
 	}
 	else
 	{
 		root -= 12;
 		if (root < 0) root = 0;
 	}
+}
+int scale = 0;
+void change_scale(void)
+{
+	if (++scale == NUM_SCALES) scale = 0;
 }
 /* USER CODE END 0 */
 
@@ -454,6 +470,7 @@ int main(void)
 	  int treble = (Trb_Bass)/ (2*MAX_PEDAL_VAL/8);	// process treble value
 	  treble *= -1;
 	  midi_Treble_Bass(treble, bass);
+	  if (HAL_GPIO_ReadPin(B1_PORT, B1_PIN)) change_scale();
 	  if (HAL_GPIO_ReadPin(B2_PORT, B2_PIN)) change_instrument(0);
 	  if (HAL_GPIO_ReadPin(B3_PORT, B3_PIN)) change_instrument(1);
 	  if (HAL_GPIO_ReadPin(B4_PORT, B4_PIN)) change_octave(0);
@@ -497,8 +514,8 @@ int main(void)
 		cm_1 = (uint16_t)Results_1.distance_mm[zone]/10;
 		cm_2 = (uint16_t)Results_2.distance_mm[zone]/10;
 
-		 Tof_values_1[zone] = cm_1/3; // 3 cm levels
-		 Tof_values_2[zone] = cm_2/3;
+		 Tof_values_1[zone] = cm_1/PLAY_ZONE_SIZE; // [size] cm levels
+		 Tof_values_2[zone] = cm_2/PLAY_ZONE_SIZE;
 	 }
 	 	 // spot to add playing notes //
 	 uint16_t _vol = vol_scale*_4ZonesVal(Tof_values_1, 1, CENTER_ZONE_1, CENTER_ZONE_2, CENTER_ZONE_3, CENTER_ZONE_4);
@@ -515,21 +532,25 @@ int main(void)
 		 note = right_center;
 		 fx = 1;   					//  reverb
 	 }
-	 if (note > 12) note = 12; 		// stay within 1 octave
+	 if (note > NOTE_RANGE) note = NOTE_RANGE; 		// stay within 1.5 octaves
+
+	 sensor2LED(vol, 1);    // volume and pitch LED level
+	 sensor2LED(note, 2);
+	 note = scales[scale][note];    // set scale
 	 note += root;					// note  from the base note
 	 if (note > 127) note = 127;
+	 int oct = (root/12) - 5;
 	 // 5) Example print:
 //	 uint8_t Z1=2,Z2=3,Z3=4,Z4=5;
 	 printf("Volume: %02u|\t", vol);
-	 printf("Note: %02u|\tReverb: %u|\tTempo: %04u|\tTreble&Bass: %d\t%02u\r\n", note, fx, tempo, treble, bass);
+	 printf("Note: %02u|\tReverb: %u|\tTempo: %04u|\tTreble&Bass: %d\t%02u|\tInstrument: %d|\tRoot: %d|\tScale: %d\r\n", note, fx, tempo, treble, bass, instr, oct, scale);
 //	 printf("Zone %d value: %u| Zone %d value: %u| Zone %d value: %u| Zone %d value: %u\r\n", Z1, Tof_values_2[Z1], Z2, Tof_values_2[Z2], Z3, Tof_values_2[Z3], Z4, Tof_values_2[Z4]);
 	 midi_SetChannelVolume(0, vol);
 	 midi_SetChannelReverb(0, fx);
 	 midiNoteOff(0, last_note, 127);
 	 midiNoteOn(0, note, 127);
 
-	 sensor2LED(vol, 1);    // volume and pitch LED level
-	 sensor2LED(note-root, 2);
+
 
 	 HAL_Delay(tempo);
   }
@@ -1020,11 +1041,11 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : B1_Pin */
-  GPIO_InitStruct.Pin = B1_Pin;
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB2 LD3_Pin LD2_Pin */
   GPIO_InitStruct.Pin = GPIO_PIN_2|LD3_Pin|LD2_Pin;
@@ -1079,6 +1100,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USB_VBUS_GPIO_Port, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
