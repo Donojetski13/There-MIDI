@@ -10,11 +10,17 @@ VS1053 library for STM32 HAL Driver<br>
 
 ## References :<br>
 https://www.st.com/en/imaging-and-photonics-solutions/vl53l7cx.html
+
 https://cdn-learn.adafruit.com/assets/assets/000/011/221/original/adafruit_products_vs1053_v2.png?1380122647
+
 https://github.com/eziya/STM32_HAL_VS1053/tree/master
+
 https://github.com/adafruit/Adafruit_VS1053_Library
+
 https://www.stm32duino.com/viewtopic.php?t=3989
+
 https://github.com/timagr615/TFT_ILI9488
+
 https://os.mbed.com/platforms/NUCLEO-L4R5ZI/
 
 ## Video :<br>
