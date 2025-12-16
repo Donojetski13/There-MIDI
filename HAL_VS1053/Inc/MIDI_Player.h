@@ -19,6 +19,12 @@
 #define MEL_GOBLINS 102
 #define MEL_SCIFI 104
 #define MEL_Timpani 48
+#define MEL_HELICOPTER 126
+#define MEL_FLUTE 74
+#define MEL_CHOIR 92
+#define MEL_MARIMBA 13
+#define MEL_TELEPHONE 125
+#define MEL_GUNSHOTS 128
 
 #define MIDI_NOTE_ON  0x90
 #define MIDI_NOTE_OFF 0x80
@@ -29,6 +35,7 @@
 #define MIDI_CHAN_REVERB 0x5b
 #define MIDI_CHAN_REVERB_DECAY 0x0C
 #define MIDI_CHAN_PROGRAM 0xC0
+
 
 /* Functions */
 uint8_t midi_Init();
