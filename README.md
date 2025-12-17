@@ -24,4 +24,4 @@ https://github.com/timagr615/TFT_ILI9488
 https://os.mbed.com/platforms/NUCLEO-L4R5ZI/
 
 ## Video :<br>
-https://drive.google.com/file/d/1MaZbS2ZX1U8iYe_xjYL4cqwVwWLcot_v/view?usp=drive_link
+https://youtu.be/FuAjkYz2teM?si=YTvDe28gCPZxrQJq
